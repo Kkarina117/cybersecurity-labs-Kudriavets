@@ -13,7 +13,7 @@ AES_KEY_SIZE = 32
 AESGCM_NONCE_SIZE = 12
 
 def derive_key_from_password(password: str, salt: bytes, iterations: int = KDF_ITERATIONS, length: int = AES_KEY_SIZE) -> bytes:
-    """Виводить симетричний ключ з паролю через PBKDF2-HMAC-SHA256."""
+    """Виводить симетричний ключ з паролю."""
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=length,
@@ -83,13 +83,11 @@ def encrypt_message_hybrid(message: str, recipient_public_pem: bytes) -> str:
     aesgcm = AESGCM(aes_key)
     nonce = os.urandom(AESGCM_NONCE_SIZE)
     ciphertext = aesgcm.encrypt(nonce, message.encode('utf-8'), None)  # містить і таг
-
     # 3) зашифрувати симетричний ключ RSA
     encrypted_key = public_key.encrypt(
         aes_key,
         padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
     )
-
     # 4) пакет у вигляді base64 частин
     parts = [
         base64.b64encode(encrypted_key).decode('utf-8'),
