@@ -1,0 +1,126 @@
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    color: #333;
+    background-color: #f4f4f4;
+}
+
+header {
+    background: #5031a0;
+    color: white;
+    padding: 15px 0;
+    border-bottom: 5px solid #2f1d5d;
+}
+
+header h1 {
+    text-align: center;
+    margin: 0;
+    font-size: 24px;
+}
+
+header nav {
+    text-align: center;
+    margin-top: 10px;
+}
+
+header nav a {
+    color: white;
+    text-decoration: none;
+    margin: 0 15px;
+    padding: 5px 0;
+    font-weight: bold;
+    transition: color 0.3s;
+}
+
+header nav a:hover {
+    color: #ffd700;
+}
+
+main {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background: white;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h2 {
+    color: #5031a0;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+form {
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+form label {
+    display: block; /* Мітка на окремому рядку */
+    font-weight: bold;
+    margin-bottom: 5px;
+    margin-top: 10px;
+}
+
+form input[type="text"],
+form input[type="password"] {
+    width: 90%; /* Робимо поля широкими */
+    padding: 8px;
+    margin-bottom: 15px; /* Збільшуємо відстань між полями */
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Важливо для правильної ширини */
+}
+
+form button {
+    background-color: #5cb85c;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+form button:hover {
+    background-color: #4cae4c;
+}
+
+h3 {
+    color: #2f1d5d;
+    margin-top: 25px;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+ul li {
+    background: #f9f9f9;
+    padding: 10px;
+    border-left: 5px solid #5031a0;
+    margin-bottom: 8px;
+    border-radius: 4px;
+}
+
+.flash {
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.flash p {
+    margin: 0;
+}
+
+.bad-search-text, .good-search-text {
+    font-style: italic;
+}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Вразливий пошук</h2>
+
+<p class="bad-search-text">
+У цій версії <b>користувацький ввід напряму підставляється в SQL-запит</b>.
+Це дозволяє виконати SQL-інʼєкцію.
+</p>
+
+<form method="post">
+    <label>Введіть імʼя студента:</label>
+    <input type="text" name="keyword" required> <button type="submit">Пошук</button>
+</form>
+
+<p class="hint">
+Приклад SQL-інʼєкції: <br>
+<b>' OR '1'='1</b>
+</p>
+
+{% if results %}
+<h3>Результати пошуку:</h3>
+<ul>
+    {% for r in results %}
+        <li>{{ r['name'] }} | {{ r['email'] }} | {{ r['grade'] }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% endblock %}
