@@ -1,0 +1,265 @@
+import os
+import time
+import hashlib
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from PIL import Image
+
+AES_KEY = None
+ANALYTICS = []
+
+def get_file_size(filepath):
+    try:
+        return os.path.getsize(filepath)
+    except FileNotFoundError:
+        return 0
+
+def log_analytic(stage, operation, time_sec, input_size=None, output_size=None, note=""):
+    ANALYTICS.append({
+        'stage': stage,
+        'operation': operation,
+        'time_sec': time_sec,
+        'input_size': input_size,
+        'output_size': output_size,
+        'note': note,
+        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+def generate_key_from_user_data(pib, dob, secret_phrase):
+    """Генерація AES-ключа 256-біт"""
+    global AES_KEY
+    data_string = f"{pib}|{dob}|{secret_phrase}"
+    start_time = time.perf_counter()
+    AES_KEY = hashlib.sha256(data_string.encode('utf-8')).digest()
+    end_time = time.perf_counter()
+    log_analytic("Ключ", "Генерація", end_time - start_time, note=f"Ключ: {AES_KEY.hex()[:8]}...")
+    print(f"\nAES-ключ успішно згенеровано!")
+    print("-" * 50)
+
+def encrypt_data_aes(data):
+    if not AES_KEY:
+        raise ValueError("Ключ не встановлено!")
+    nonce = os.urandom(16)
+    cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(nonce), backend=default_backend())
+    encryptor = cipher.encryptor()
+    start_time = time.perf_counter()
+    ct = encryptor.update(data) + encryptor.finalize()
+    end_time = time.perf_counter()
+    log_analytic("AES", "Шифрування", end_time - start_time,
+                 input_size=len(data), output_size=len(nonce + ct))
+    return nonce + ct
+
+def decrypt_data_aes(payload):
+    if not AES_KEY:
+        raise ValueError("Ключ не встановлено!")
+    nonce, ciphertext = payload[:16], payload[16:]
+    cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(nonce), backend=default_backend())
+    decryptor = cipher.decryptor()
+    start_time = time.perf_counter()
+    pt = decryptor.update(ciphertext) + decryptor.finalize()
+    end_time = time.perf_counter()
+    log_analytic("AES", "Розшифрування", end_time - start_time,
+                 input_size=len(payload), output_size=len(pt))
+    return pt
+
+def hide_data_lsb(container_path, data, output_path):
+    """Приховування даних у зображенні через LSB"""
+    try:
+        img = Image.open(container_path).convert('RGB')
+    except Exception as e:
+        print(f"Помилка відкриття контейнера: {e}")
+        return False
+
+    w, h = img.size
+    max_bytes = (w * h * 3) // 8 - 8
+    if len(data) > max_bytes:
+        print(f"Дані завеликі! Максимум: {max_bytes} байт, у вас: {len(data)}")
+        return False
+
+    data += b'\x00' * 8  # маркер кінця
+    bits = ''.join(f'{b:08b}' for b in data)
+    pixels = img.load()
+    idx = 0
+    start = time.perf_counter()
+
+    for y in range(h):
+        for x in range(w):
+            if idx >= len(bits):
+                break
+            r, g, b = pixels[x, y]
+            for i, chan in enumerate((r, g, b)):
+                if idx < len(bits):
+                    new_chan = (chan & ~1) | int(bits[idx])
+                    if i == 0: r = new_chan
+                    if i == 1: g = new_chan
+                    if i == 2: b = new_chan
+                    idx += 1
+            pixels[x, y] = (r, g, b)
+        if idx >= len(bits):
+            break
+
+    img.save(output_path, "PNG")
+    end = time.perf_counter()
+    log_analytic("LSB", "Приховування", end - start,
+                 input_size=len(data), output_size=get_file_size(output_path),
+                 note=f"Контейнер: {os.path.basename(container_path)} → {os.path.basename(output_path)}")
+    print(f"Стего-файл збережено: {output_path}")
+    return True
+
+def extract_data_lsb(stego_path):
+    """Витягування даних із стего-зображення"""
+    try:
+        img = Image.open(stego_path).convert('RGB')
+    except Exception as e:
+        print(f"Помилка відкриття стего-зображення: {e}")
+        return None
+
+    pixels = img.load()
+    w, h = img.size
+    bits = []
+    start = time.perf_counter()
+
+    for y in range(h):
+        for x in range(w):
+            r, g, b = pixels[x, y]
+            bits.extend([str(r & 1), str(g & 1), str(b & 1)])
+            if len(bits) >= 64 and bits[-64:] == ['0'] * 64:
+                bits = bits[:-64]
+                data = bytes(int(''.join(bits[i:i+8]), 2) for i in range(0, len(bits), 8))
+                end = time.perf_counter()
+                log_analytic("LSB", "Витягування", end - start,
+                             input_size=get_file_size(stego_path), output_size=len(data))
+                return data
+
+    print("Маркер кінця не знайдено")
+    return None
+
+def protect_file():
+    if not AES_KEY:
+        print("Спочатку введіть ключ (пункт 4)")
+        return
+
+    file_to_hide = input("\nВведіть шлях до файлу, який треба захистити: ").strip(' "\'')
+    if not os.path.exists(file_to_hide):
+        print("Файл не знайдено!")
+        return
+
+    container = input("Введіть шлях до зображення-контейнера: ").strip(' "\'')
+    if not os.path.exists(container):
+        print("Контейнер не знайдено!")
+        return
+
+    stego_name = input("Ім'я стего-файлу (наприклад, secret.png): ").strip(' "\'')
+    if not stego_name.lower().endswith('.png'):
+        stego_name += ".png"
+
+    with open(file_to_hide, 'rb') as f:
+        original = f.read()
+
+    print(f"\n[1/2] AES-шифрування {os.path.basename(file_to_hide)} ({len(original):,} байт)…")
+    encrypted = encrypt_data_aes(original)
+    payload = encrypted + hashlib.sha256(original).digest()
+
+    print(f"[2/2] Приховування даних у зображенні…")
+    if hide_data_lsb(container, payload, stego_name):
+        print(f"\nПовний захист завершено!")
+        print(f"   → Стего-зображення: {stego_name}")
+        print(f"   Можна видалити оригінал {os.path.basename(file_to_hide)}")
+
+def recover_file():
+    if not AES_KEY:
+        print("Спочатку введіть правильний ключ (пункт 4)")
+        return
+
+    stego = input("\nВведіть шлях до стего-зображення: ").strip(' "\'')
+    if not os.path.exists(stego):
+        print("Стего-файл не знайдено!")
+        return
+
+    print(f"\nВитягуємо дані з {os.path.basename(stego)}…")
+    payload = extract_data_lsb(stego)
+    if not payload or len(payload) < 48:
+        print("Не вдалося витягти дані або файл пошкоджено")
+        return
+
+    # Розділяємо хеш і шифровані дані
+    hash_received = payload[-32:]
+    encrypted_data = payload[:-32]
+
+    print("Розшифровуємо…")
+    try:
+        restored = decrypt_data_aes(encrypted_data)
+        if hashlib.sha256(restored).digest() == hash_received:
+            out_name = f"restored_{time.strftime('%H%M%S')}.bin"
+            with open(out_name, "wb") as f:
+                f.write(restored)
+            print(f"Успіх! Файл збережено як → {out_name}")
+            print("   Перейменуйте .bin у потрібне розширення (.docx, .pdf, .jpg тощо)")
+        else:
+            print("Хеш не співпадає — неправильний ключ або пошкоджене зображення")
+    except:
+        print("Помилка розшифрування — ймовірно неправильний ключ")
+
+def show_analytics():
+    if not ANALYTICS:
+        print("\nАналітика порожня")
+        return
+
+    print("\n" + "=" * 90)
+    print(" " * 30 + "АНАЛІТИЧНИЙ ЗВІТ")
+    print("=" * 90)
+
+    header = f"{'Операція':<25} | {'Розмір до, байт':<15} | {'Розмір після, байт':<17} | {'Час, с':<10}"
+    print(header)
+    print("-" * 90)
+
+    for a in ANALYTICS:
+        inp = f"{a['input_size']:,}" if a['input_size'] else "-"
+        out = f"{a['output_size']:,}" if a['output_size'] else "-"
+        time_s = f"{a['time_sec']:.4f}"
+
+        print(f"{a['operation']:<25} | {inp:<15} | {out:<17} | {time_s:<10}")
+
+    print("=" * 90)
+
+def main():
+    print("Двоетапний захист: AES-256 + LSB стеганографія")
+    print("═"*60)
+
+    print("\n--- Введіть дані для генерації ключа ---")
+    pib = input("ПІБ: ").strip()
+    dob = input("Дата народження (дд.мм.рррр): ").strip()
+    phrase = input("Секретна фраза: ").strip()
+    generate_key_from_user_data(pib, dob, phrase)
+
+    while True:
+        print("\n" + "═"*60)
+        print("                    МЕНЮ")
+        print("═"*60)
+        print("1. Захистити файл")
+        print("2. Відновити файл")
+        print("3. Аналітика")
+        print("4. Змінити ключ")
+        print("5. Вихід")
+        c = input("\nОберіть опцію: ").strip()
+
+        if c == "1":
+            protect_file()
+        elif c == "2":
+            recover_file()
+        elif c == "3":
+            show_analytics()
+        elif c == "4":
+            print("\n--- Новий ключ ---")
+            pib = input("ПІБ: ").strip()
+            dob = input("Дата народження (дд.мм.рррр): ").strip()
+            phrase = input("Секретна фраза: ").strip()
+            generate_key_from_user_data(pib, dob, phrase)
+        elif c == "5":
+            print("\nДо зустрічі!")
+            break
+        else:
+            print("Невірна команда")
+
+if __name__ == "__main__":
+    main()
